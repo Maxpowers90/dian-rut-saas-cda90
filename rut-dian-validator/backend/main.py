@@ -14,7 +14,7 @@ from backend.supabase_client import (
 )
 from backend.scraper import scrape_dian_rut
 
-# Initialize FastAPI App on PORT 3000 (standard internal port required by dev/containers)
+# Initialize FastAPI App on PORT 8000 (Railway default)
 app = FastAPI(
     title="RUT DIAN Validator API MVP",
     description="Motor de automatización liviano para validación de NITs colombianos",
@@ -34,11 +34,16 @@ app.add_middleware(
 def health_check():
     """
     Simpler status probe for deployment checking (Liveness/Readiness).
+    Does not require Supabase to be configured.
     """
+    db_status = "not_configured"
     try:
         # Check if Supabase variables exist
         _ = get_supabase()
         db_status = "connected"
+    except RuntimeError:
+        # Supabase not configured - this is OK for health check
+        db_status = "not_configured"
     except Exception as err:
         db_status = f"error: {str(err)}"
         
