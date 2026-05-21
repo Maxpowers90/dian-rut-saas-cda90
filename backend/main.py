@@ -61,12 +61,16 @@ def health_check():
 def process_validation_sequential(job_id: str, nits: List[str]):
     """
     Synchronous entry point called by FastAPI BackgroundTasks.
+    Spawns an isolated asyncio loop to process the scraper pipeline
+    robustly on a thread-pool and keeps the main HTTP thread reactive.
     """
     logger.info(f"STARTING JOB {job_id}")
     try:
         asyncio.run(run_validation_process(job_id, nits))
+        logger.info(f"JOB FINISHED {job_id}")
     except Exception as err:
-        logger.error(f"Critical error in validation job {job_id} sequence initiation:\n{traceback.format_exc()}")
+        tb_str = traceback.format_exc()
+        logger.error(f"BACKGROUND TASK ERROR for Job {job_id}:\n{tb_str}")
         raise err
 
 async def run_validation_process(job_id: str, nits: List[str]):
@@ -95,7 +99,7 @@ async def run_validation_process(job_id: str, nits: List[str]):
         except Exception as err:
             failed += 1
             tb_str = traceback.format_exc()
-            logger.error(f"[NIT: {nit}] Exception encountered during process_validation_sequential:\n{tb_str}")
+            logger.error(f"BACKGROUND TASK ERROR under NIT {nit}:\n{tb_str}")
             
             error_payload = {
                 "nit": nit,

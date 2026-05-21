@@ -64,6 +64,8 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                     args=[
                         "--no-sandbox",
                         "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
                         "--disable-blink-features=AutomationControlled",
                         "--disable-web-security"
                     ]
