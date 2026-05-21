@@ -61,17 +61,15 @@ def health_check():
 def process_validation_sequential(job_id: str, nits: List[str]):
     """
     Synchronous entry point called by FastAPI BackgroundTasks.
-    Runs the asynchronous process in a fully isolated event loop on an independent thread,
-    keeping FastAPI completely responsive and Playwright extremely stable.
     """
     logger.info(f"STARTING JOB {job_id}")
     try:
-        asyncio.run(_async_process_validation_sequential(job_id, nits))
+        asyncio.run(run_validation_process(job_id, nits))
     except Exception as err:
         logger.error(f"Critical error in validation job {job_id} sequence initiation:\n{traceback.format_exc()}")
         raise err
 
-async def _async_process_validation_sequential(job_id: str, nits: List[str]):
+async def run_validation_process(job_id: str, nits: List[str]):
     total = len(nits)
     success = 0
     failed = 0
