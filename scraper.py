@@ -4,7 +4,6 @@ import logging
 import traceback
 from playwright.async_api import async_playwright, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 
-# Configure Logger specifically for the Scraper
 logger = logging.getLogger("dian_scraper")
 
 USER_AGENTS = [
@@ -15,160 +14,164 @@ USER_AGENTS = [
 
 def calculate_dian_dv(nit_str: str) -> str:
     """
-    Implements the real mathematical algorithm defined by the DIAN (Colombia) 
-    to calculate the Verification Digit (DV) of a NIT. 
-    Allows instant mathematical offline validation.
+    Calcula el Dígito de Verificación (DV) según el algoritmo oficial de la DIAN.
     """
     cleaned_nit = "".join(filter(str.isdigit, nit_str))
     if not cleaned_nit:
         return "0"
-        
+
     coefficients = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71]
-    
-    # Reverse the digits to multiply starting from the rightmost
-    digits = [int(char) for char in cleaned_nit][::-1]
-    
+    digits = [int(c) for c in cleaned_nit][::-1]
+
     total_sum = 0
     for idx, digit in enumerate(digits):
         if idx < len(coefficients):
             total_sum += digit * coefficients[idx]
-            
+
     residue = total_sum % 11
-    if residue > 1:
-        dv = 11 - residue
-    else:
-        dv = residue
-        
+    dv = 11 - residue if residue > 1 else residue
     return str(dv)
+
 
 async def scrape_dian_rut(nit_str: str) -> dict:
     """
-    Attempts to query the public DIAN Muisca RUT validation portal for a given NIT.
-    Raises errors on failure to allow top-level execution logging.
+    Consulta el portal público RUT Muisca de la DIAN para un NIT dado.
+    Raises RuntimeError con mensaje descriptivo ante cualquier fallo.
     """
     cleaned_nit = "".join(filter(str.isdigit, nit_str))
     expected_dv = calculate_dian_dv(cleaned_nit)
-    
-    if not cleaned_nit:
-        logger.warning(f"[NIT: {nit_str}] Invalid input NIT. Real exception raised: No numerical digits provided in query.")
-        raise ValueError(f"NIT '{nit_str}' lacks numerical characters needed for live validation.")
 
-    # Playwright Scraping Section
+    if not cleaned_nit:
+        raise ValueError(f"NIT '{nit_str}' no contiene dígitos numéricos válidos.")
+
     async with async_playwright() as p:
         browser = None
         try:
-            logger.info(f"[NIT: {cleaned_nit}] Initializing Playwright browser launch...")
-            try:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-web-security"
-                    ]
-                )
-            except Exception as launch_err:
-                tb_str = traceback.format_exc()
-                logger.error(f"[NIT: {cleaned_nit}] browser launch error:\n{tb_str}")
-                raise RuntimeError(f"Playwright browser launch failure: {str(launch_err)}") from launch_err
-            
-            # 2. Emulate realistic browser headers & sizing
+            logger.info(f"[NIT: {cleaned_nit}] Iniciando navegador Chromium...")
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-blink-features=AutomationControlled",
+                ]
+            )
+
             context = await browser.new_context(
                 user_agent=random.choice(USER_AGENTS),
                 viewport={"width": 1280, "height": 720},
                 locale="es-CO",
                 timezone_id="America/Bogota"
             )
-            
-            page = await context.new_page()
-            
-            # 3. Direct Navigation to public web form
-            dian_url = "https://muisca.dian.gov.co/WebConsultaRUT/ConsultaRut.faces"
-            logger.info(f"[NIT: {cleaned_nit}] Navigating to DIAN portal: {dian_url}")
-            try:
-                await page.goto(dian_url, timeout=5000, wait_until="domcontentloaded")
-            except PlaywrightTimeoutError as goto_timeout:
-                tb_str = traceback.format_exc()
-                logger.error(f"[NIT: {cleaned_nit}] page.goto() failure (timeout):\n{tb_str}")
-                raise RuntimeError(f"Navigation failure: DIAN did not load within 5000ms.") from goto_timeout
-            except PlaywrightError as goto_err:
-                tb_str = traceback.format_exc()
-                logger.error(f"[NIT: {cleaned_nit}] page.goto() failure (navigation error):\n{tb_str}")
-                raise RuntimeError(f"Navigation error: DIAN portal loading failed. {str(goto_err)}") from goto_err
-            
-            # Fill form
-            input_selector = "input[name='formConsultaRut:numNit']" if await page.query_selector("input[name='formConsultaRut:numNit']") else "#formConsultaRut\\:numNit"
-            logger.info(f"[NIT: {cleaned_nit}] Testing query selector for NIT input...")
-            try:
-                await page.wait_for_selector(input_selector, timeout=2000)
-            except PlaywrightTimeoutError as sel_timeout:
-                tb_str = traceback.format_exc()
-                logger.error(f"[NIT: {cleaned_nit}] selector timeout error (input field not found):\n{tb_str}")
-                raise RuntimeError(f"DOM modification or block: Selector '{input_selector}' could not be located in 2000ms.") from sel_timeout
-            
-            await page.click(input_selector)
-            await page.fill(input_selector, "")
-            
-            # Simulate human-like keystrokes
-            for char in cleaned_nit:
-                await page.keyboard.press(char)
-                await asyncio.sleep(random.uniform(0.04, 0.1))
-                
-            # Submit Form click
-            btn_selector = "input[name='formConsultaRut:btnBuscar']" if await page.query_selector("input[name='formConsultaRut:btnBuscar']") else "#formConsultaRut\\:btnBuscar"
-            logger.info(f"[NIT: {cleaned_nit}] Submitting query form using: {btn_selector}")
-            await page.click(btn_selector)
-            
-            # Wait for Results Panel
-            logger.info(f"[NIT: {cleaned_nit}] Awaiting portal state response (networkidle)...")
-            try:
-                await page.wait_for_load_state("networkidle", timeout=3000)
-            except Exception as wait_err:
-                logger.info(f"[NIT: {cleaned_nit}] Page load networkidle finished early or raised non-critical alarm: {str(wait_err)}")
-                
-            await asyncio.sleep(1.0) # buffer to render tables
-            
-            # Attempt extraction of the DIAN results fields
-            # Names of elements in the DOM of public RUT portal
-            company_el = await page.query_selector("[id*='primerApellido'], [id*='razonSocial']")
-            company_name = await company_el.inner_text() if company_el else None
-            
-            status_el = await page.query_selector("[id*='estado']")
-            status_val = await status_el.inner_text() if status_el else None
-            
-            activity_el = await page.query_selector("[id*='actividad']")
-            activity_name = await activity_el.inner_text() if activity_el else None
-            
-            if not company_name and not status_val:
-                logger.error(f"[NIT: {cleaned_nit}] Playwright validation failed: Data selectors returned null. Main page might have block or captcha.")
-                raise RuntimeError("Response parsing error: DIAN portal responded with empty fields or captcha wall.")
 
-            await browser.close()
-            
-            logger.info(f"[NIT: {cleaned_nit}] Query complete. Company: {company_name}, Status: {status_val}")
-            
+            page = await context.new_page()
+
+            # --- FIX 1: Timeout aumentado a 30s (el portal DIAN es muy lento) ---
+            dian_url = "https://muisca.dian.gov.co/WebConsultaRUT/ConsultaRut.faces"
+            logger.info(f"[NIT: {cleaned_nit}] Navegando a: {dian_url}")
+            try:
+                await page.goto(dian_url, timeout=30000, wait_until="domcontentloaded")
+            except PlaywrightTimeoutError:
+                raise RuntimeError("Timeout al cargar el portal DIAN (>30s). El servidor puede estar caído o bloqueando el acceso.")
+            except PlaywrightError as e:
+                raise RuntimeError(f"Error de navegación al portal DIAN: {str(e)}")
+
+            # --- FIX 2: wait_for_selector PRIMERO, luego usar el selector confirmado ---
+            input_selector = "input[name='formConsultaRut:numNit']"
+            logger.info(f"[NIT: {cleaned_nit}] Esperando campo de entrada NIT...")
+            try:
+                await page.wait_for_selector(input_selector, timeout=10000)
+            except PlaywrightTimeoutError:
+                # Intentar selector alternativo con escape JSF
+                input_selector = "#formConsultaRut\\:numNit"
+                try:
+                    await page.wait_for_selector(input_selector, timeout=5000)
+                except PlaywrightTimeoutError:
+                    raise RuntimeError("Campo NIT no encontrado en el portal. El portal puede haber cambiado su estructura HTML o mostrar un captcha.")
+
+            await page.fill(input_selector, "")
+
+            # --- FIX 3: Usar page.type() para escritura carácter a carácter (NO keyboard.press) ---
+            await page.type(input_selector, cleaned_nit, delay=random.randint(60, 120))
+
+            # Localizar y hacer clic en el botón Buscar
+            btn_selector = "input[name='formConsultaRut:btnBuscar']"
+            try:
+                await page.wait_for_selector(btn_selector, timeout=5000)
+            except PlaywrightTimeoutError:
+                btn_selector = "#formConsultaRut\\:btnBuscar"
+                await page.wait_for_selector(btn_selector, timeout=5000)
+
+            logger.info(f"[NIT: {cleaned_nit}] Enviando formulario...")
+            await page.click(btn_selector)
+
+            # Esperar respuesta del portal
+            try:
+                await page.wait_for_load_state("networkidle", timeout=20000)
+            except Exception:
+                pass  # networkidle puede no dispararse en portales JSF, continuar
+
+            await asyncio.sleep(1.5)  # buffer adicional para renderizado JSF
+
+            # --- Extracción de datos del portal ---
+            # Razón social o primer apellido
+            company_el = await page.query_selector("[id*='razonSocial']") or \
+                         await page.query_selector("[id*='primerApellido']")
+            company_name = (await company_el.inner_text()).strip() if company_el else None
+
+            # Estado del RUT
+            status_el = await page.query_selector("[id*='estado']")
+            status_val = (await status_el.inner_text()).strip().upper() if status_el else None
+
+            # Actividad económica
+            activity_code_el = await page.query_selector("[id*='actividadEconomica']")
+            activity_code = (await activity_code_el.inner_text()).strip() if activity_code_el else "N/A"
+
+            activity_name_el = await page.query_selector("[id*='nombreActividad']")
+            activity_name = (await activity_name_el.inner_text()).strip().capitalize() if activity_name_el else "N/A"
+
+            # Dirección
+            address_el = await page.query_selector("[id*='direccionSeccional']") or \
+                         await page.query_selector("[id*='direccion']")
+            address = (await address_el.inner_text()).strip() if address_el else "N/A"
+
+            # Departamento / seccional
+            dpto_el = await page.query_selector("[id*='seccional']") or \
+                      await page.query_selector("[id*='dpto']")
+            dpto = (await dpto_el.inner_text()).strip() if dpto_el else "N/A"
+
+            if not company_name and not status_val:
+                raise RuntimeError(
+                    "El portal respondió con campos vacíos. Posibles causas: NIT no existe, captcha activo, o el portal bloqueó la consulta."
+                )
+
+            logger.info(f"[NIT: {cleaned_nit}] Resultado: {company_name} | Estado: {status_val}")
+
             return {
                 "nit": cleaned_nit,
                 "dv": expected_dv,
-                "company_name": company_name.strip().upper(),
-                "status": status_val.strip().upper() if status_val else "ACTIVO",
-                "economic_activity": "G4690",
-                "activity_name": activity_name.strip().capitalize() if activity_name else "Comercio al por mayor",
-                "address": "Calle Secundaria Colombia",
-                "dpto": "Bogotá D.C.",
+                "company_name": company_name.upper() if company_name else f"NIT {cleaned_nit}",
+                "status": status_val if status_val else "ACTIVO",
+                "economic_activity": activity_code,
+                "activity_name": activity_name,
+                "address": address,
+                "dpto": dpto,
                 "check_code": "DIAN_MUISCA_LIVE",
-                "notes": "Validación exitosa en vivo desde el portal de la DIAN Muisca."
+                "notes": "Validación exitosa desde el portal Muisca de la DIAN."
             }
 
-        except PlaywrightError as p_err:
-            tb_str = traceback.format_exc()
-            logger.error(f"[NIT: {cleaned_nit}] Playwright exception occurred:\n{tb_str}")
-            raise RuntimeError(f"Playwright runtime exception: {str(p_err)}") from p_err
-        except Exception as any_err:
-            tb_str = traceback.format_exc()
-            logger.error(f"[NIT: {cleaned_nit}] general exception occurred:\n{tb_str}")
-            raise any_err
+        except (RuntimeError, ValueError):
+            raise
+        except PlaywrightError as e:
+            tb = traceback.format_exc()
+            logger.error(f"[NIT: {cleaned_nit}] PlaywrightError:\n{tb}")
+            raise RuntimeError(f"Error de Playwright: {str(e)}")
+        except Exception as e:
+            tb = traceback.format_exc()
+            logger.error(f"[NIT: {cleaned_nit}] Error inesperado:\n{tb}")
+            raise
         finally:
             if browser:
                 try:
