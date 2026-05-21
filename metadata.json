@@ -1,0 +1,6 @@
+{
+  "name": "RUT DIAN Validator",
+  "description": "High-fidelity Colombian DIAN NIT validation and RUT status verification SaaS toolkit with batch Excel processors and Supabase configuration engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
