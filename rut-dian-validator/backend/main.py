@@ -1,5 +1,6 @@
 import io
 import os
+import sys
 from typing import List
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,13 @@ from backend.supabase_client import (
     insert_validation_result,
     get_supabase
 )
-from backend.scraper import scrape_dian_rut
+
+# Lazy import scraper to avoid import errors at startup
+try:
+    from backend.scraper import scrape_dian_rut
+except Exception as e:
+    print(f"Warning: Could not import scraper: {e}", file=sys.stderr)
+    scrape_dian_rut = None
 
 # Initialize FastAPI App on PORT 8000 (Railway default)
 app = FastAPI(
@@ -59,6 +66,10 @@ async def process_validation_sequential(job_id: str, nits: List[str]):
     Iterates sequentially through the parsed list of NITs, scraping
     values and submitting them step-by-step into Supabase for maximum simplicity.
     """
+    if not scrape_dian_rut:
+        print("Error: scraper module not available", file=sys.stderr)
+        return
+        
     total = len(nits)
     success = 0
     failed = 0
@@ -219,3 +230,7 @@ def get_batch_progress(job_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(err)
         )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
