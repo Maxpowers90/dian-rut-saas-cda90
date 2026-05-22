@@ -69,7 +69,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             page = await context.new_page()
 
             # --- FIX 1: Timeout aumentado a 30s (el portal DIAN es muy lento) ---
-            dian_url = "dian_url = "https://muisca.dian.gov.co/WebRutMuisca/DefConsultaEstadoRUT.faces""
+            dian_url = "https://muisca.dian.gov.co/WebRutMuisca/DefConsultaEstadoRUT.faces"
             logger.info(f"[NIT: {cleaned_nit}] Navegando a: {dian_url}")
             try:
                 await page.goto(dian_url, timeout=30000, wait_until="domcontentloaded")
