@@ -78,6 +78,13 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             except PlaywrightError as e:
                 raise RuntimeError(f"Error de navegación al portal DIAN: {str(e)}")
 
+            # DEBUG temporal
+            page_content = await page.content()
+            logger.info(f"[NIT: {cleaned_nit}] PAGE TITLE: {await page.title()}")
+            logger.info(f"[NIT: {cleaned_nit}] PAGE URL: {page.url}")
+            logger.info(f"[NIT: {cleaned_nit}] HTML SNIPPET: {page_content[:500]}")
+
+                      
             # --- FIX 2: wait_for_selector PRIMERO, luego usar el selector confirmado ---
             input_selector = "input[name='formConsultaRut:numNit']"
             logger.info(f"[NIT: {cleaned_nit}] Esperando campo de entrada NIT...")
