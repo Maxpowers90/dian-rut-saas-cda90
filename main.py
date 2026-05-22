@@ -220,3 +220,8 @@ def get_batch_progress(job_id: str):
 
 # Importación necesaria para el delay entre NITs
 import random
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
