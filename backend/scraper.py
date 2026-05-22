@@ -2,7 +2,6 @@ import asyncio
 import random
 import logging
 import traceback
-from playwright.async_api import async_playwright, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 
 # Configure Logger specifically for the Scraper
 logger = logging.getLogger("dian_scraper")
