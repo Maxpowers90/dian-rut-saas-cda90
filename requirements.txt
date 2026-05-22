@@ -1,8 +1,8 @@
 fastapi
 uvicorn
 playwright
-playwright-stealth
 httpx
 pandas
 openpyxl
 python-multipart
+python-dotenv
