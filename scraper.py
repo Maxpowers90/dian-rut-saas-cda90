@@ -72,10 +72,19 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             except PlaywrightError as e:
                 raise RuntimeError(f"Error de navegacion al portal DIAN: {str(e)}")
 
-            page_content = await page.content()
-            logger.info(f"[NIT: {cleaned_nit}] PAGE TITLE: {await page.title()}")
-            logger.info(f"[NIT: {cleaned_nit}] PAGE URL: {page.url}")
-            logger.info(f"[NIT: {cleaned_nit}] HTML SNIPPET: {page_content[:3000]}")
+         page_content = await page.content()
+page_title = await page.title()
+logger.info(f"[NIT: {cleaned_nit}] PAGE TITLE: {page_title}")
+logger.info(f"[NIT: {cleaned_nit}] PAGE URL: {page.url}")
+body_el = await page.query_selector("body")
+body_text = await body_el.inner_html() if body_el else "NO BODY"
+logger.info(f"[NIT: {cleaned_nit}] BODY HTML: {body_text[:4000]}")
+inputs = await page.query_selector_all("input")
+for inp in inputs:
+    name = await inp.get_attribute("name")
+    tipo = await inp.get_attribute("type")
+    value = await inp.get_attribute("value")
+    logger.info(f"[NIT: {cleaned_nit}] INPUT: name={name} type={tipo} value={value}")
 
             input_selector = "input[name='NIT']"
             logger.info(f"[NIT: {cleaned_nit}] Esperando campo NIT...")
