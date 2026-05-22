@@ -85,12 +85,16 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             await page.fill(input_selector, "")
             await page.type(input_selector, cleaned_nit, delay=random.randint(60, 120))
 
-            btn_selector = "input[type='submit']"
-            try:
-                await page.wait_for_selector(btn_selector, timeout=5000)
-            except PlaywrightTimeoutError:
-                btn_selector = "button[type='submit']"
-                await page.wait_for_selector(btn_selector, timeout=5000)
+            btn_selector = None
+            for sel in ["input[type='submit']", "button[type='submit']", "input[type='button']", "button", "input[value='Buscar']", "input[value='Consultar']"]:
+                el = await page.query_selector(sel)
+                if el:
+                    btn_selector = sel
+                    logger.info(f"[NIT: {cleaned_nit}] Boton encontrado con selector: {sel}")
+                    break
+            if not btn_selector:
+                raise RuntimeError("Boton de busqueda no encontrado en el portal.")
+            await page.click(btn_selector)
 
             logger.info(f"[NIT: {cleaned_nit}] Enviando formulario...")
             await page.click(btn_selector)
