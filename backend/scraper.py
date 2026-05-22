@@ -6,7 +6,7 @@ import traceback
 from playwright.async_api import (
     async_playwright,
     Error as PlaywrightError,
-    TimeoutError as PlaywrightTimeoutError
+    TimeoutError as PlaywrightTimeoutError,
 )
 
 logger = logging.getLogger("dian_scraper")
@@ -26,7 +26,7 @@ USER_AGENTS = [
         "Mozilla/5.0 (X11; Linux x86_64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/136.0.0.0 Safari/537.36"
-    )
+    ),
 ]
 
 
@@ -110,8 +110,7 @@ async def wait_for_turnstile(page, cleaned_nit: str):
         ).input_value()
 
         logger.info(
-            f"[NIT: {cleaned_nit}] "
-            f"Turnstile token OK"
+            f"[NIT: {cleaned_nit}] Turnstile token OK"
         )
 
         return token
@@ -273,7 +272,6 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                     "Campo NIT no encontrado."
                 )
 
-            # interacción humana
             await page.mouse.move(300, 400)
 
             await human_delay(500, 1200)
@@ -290,7 +288,6 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             await human_delay(1000, 2500)
 
-            # esperar token real
             await wait_for_turnstile(
                 page,
                 cleaned_nit
@@ -341,7 +338,6 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                 "HTML obtenido correctamente"
             )
 
-            # extracción
             company_el = (
                 await page.query_selector("[id*='razonSocial']")
                 or await page.query_selector("[id*='primerApellido']")
