@@ -6,10 +6,8 @@ import traceback
 from playwright.async_api import (
     async_playwright,
     Error as PlaywrightError,
-    TimeoutError as PlaywrightTimeoutError
+    TimeoutError as PlaywrightTimeoutError,
 )
-
-from playwright_stealth import stealth_async
 
 logger = logging.getLogger("dian_scraper")
 
@@ -28,7 +26,7 @@ USER_AGENTS = [
         "Mozilla/5.0 (X11; Linux x86_64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/136.0.0.0 Safari/537.36"
-    )
+    ),
 ]
 
 
@@ -112,8 +110,7 @@ async def wait_for_turnstile(page, cleaned_nit: str):
         ).input_value()
 
         logger.info(
-            f"[NIT: {cleaned_nit}] "
-            f"Turnstile token OK"
+            f"[NIT: {cleaned_nit}] Turnstile token OK"
         )
 
         return token
@@ -125,19 +122,24 @@ async def wait_for_turnstile(page, cleaned_nit: str):
             f"Cloudflare no generó token"
         )
 
-        await page.screenshot(
-            path=f"turnstile_fail_{cleaned_nit}.png",
-            full_page=True
-        )
+        try:
 
-        html = await page.content()
+            await page.screenshot(
+                path=f"turnstile_fail_{cleaned_nit}.png",
+                full_page=True
+            )
 
-        with open(
-            f"turnstile_fail_{cleaned_nit}.html",
-            "w",
-            encoding="utf-8"
-        ) as f:
-            f.write(html)
+            html = await page.content()
+
+            with open(
+                f"turnstile_fail_{cleaned_nit}.html",
+                "w",
+                encoding="utf-8"
+            ) as f:
+                f.write(html)
+
+        except Exception:
+            pass
 
         raise RuntimeError(
             "Cloudflare bloqueó la sesión. "
@@ -202,9 +204,6 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             )
 
             page = await context.new_page()
-
-            # ACTIVAR STEALTH
-            await stealth_async(page)
 
             dian_url = (
                 "https://muisca.dian.gov.co/"
@@ -273,7 +272,6 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                     "Campo NIT no encontrado."
                 )
 
-            # interacción humana
             await page.mouse.move(300, 400)
 
             await human_delay(500, 1200)
@@ -290,8 +288,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             await human_delay(1000, 2500)
 
-            # esperar token real
-            turnstile_token = await wait_for_turnstile(
+            await wait_for_turnstile(
                 page,
                 cleaned_nit
             )
@@ -319,24 +316,28 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             result_html = await page.content()
 
-            with open(
-                f"resultado_{cleaned_nit}.html",
-                "w",
-                encoding="utf-8"
-            ) as f:
-                f.write(result_html)
+            try:
 
-            await page.screenshot(
-                path=f"resultado_{cleaned_nit}.png",
-                full_page=True
-            )
+                with open(
+                    f"resultado_{cleaned_nit}.html",
+                    "w",
+                    encoding="utf-8"
+                ) as f:
+                    f.write(result_html)
+
+                await page.screenshot(
+                    path=f"resultado_{cleaned_nit}.png",
+                    full_page=True
+                )
+
+            except Exception:
+                pass
 
             logger.info(
                 f"[NIT: {cleaned_nit}] "
                 "HTML obtenido correctamente"
             )
 
-            # extracción
             company_el = (
                 await page.query_selector("[id*='razonSocial']")
                 or await page.query_selector("[id*='primerApellido']")
