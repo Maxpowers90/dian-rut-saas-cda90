@@ -75,7 +75,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             page_content = await page.content()
             logger.info(f"[NIT: {cleaned_nit}] PAGE TITLE: {await page.title()}")
             logger.info(f"[NIT: {cleaned_nit}] PAGE URL: {page.url}")
-            logger.info(f"[NIT: {cleaned_nit}] HTML SNIPPET: {page_content[:600]}")
+            logger.info(f"[NIT: {cleaned_nit}] HTML SNIPPET: {page_content[:3000]}")
 
             input_selector = "input[name='NIT']"
             logger.info(f"[NIT: {cleaned_nit}] Esperando campo NIT...")
