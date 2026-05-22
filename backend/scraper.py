@@ -3,175 +3,468 @@ import random
 import logging
 import traceback
 
-# Configure Logger specifically for the Scraper
+from playwright.async_api import (
+    async_playwright,
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError
+)
+
 logger = logging.getLogger("dian_scraper")
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/136.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/135.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (X11; Linux x86_64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/136.0.0.0 Safari/537.36"
+    )
 ]
 
+
 def calculate_dian_dv(nit_str: str) -> str:
-    """
-    Implements the real mathematical algorithm defined by the DIAN (Colombia) 
-    to calculate the Verification Digit (DV) of a NIT. 
-    Allows instant mathematical offline validation.
-    """
+
     cleaned_nit = "".join(filter(str.isdigit, nit_str))
+
     if not cleaned_nit:
         return "0"
-        
-    coefficients = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71]
-    
-    # Reverse the digits to multiply starting from the rightmost
-    digits = [int(char) for char in cleaned_nit][::-1]
-    
+
+    coefficients = [
+        3, 7, 13, 17, 19,
+        23, 29, 37, 41, 43,
+        47, 53, 59, 67, 71
+    ]
+
+    digits = [int(c) for c in cleaned_nit][::-1]
+
     total_sum = 0
+
     for idx, digit in enumerate(digits):
+
         if idx < len(coefficients):
             total_sum += digit * coefficients[idx]
-            
+
     residue = total_sum % 11
-    if residue > 1:
-        dv = 11 - residue
-    else:
-        dv = residue
-        
+
+    dv = 11 - residue if residue > 1 else residue
+
     return str(dv)
 
-async def scrape_dian_rut(nit_str: str) -> dict:
-    """
-    Attempts to query the public DIAN Muisca RUT validation portal for a given NIT.
-    Raises errors on failure to allow top-level execution logging.
-    """
-    cleaned_nit = "".join(filter(str.isdigit, nit_str))
-    expected_dv = calculate_dian_dv(cleaned_nit)
-    
-    if not cleaned_nit:
-        logger.warning(f"[NIT: {nit_str}] Invalid input NIT. Real exception raised: No numerical digits provided in query.")
-        raise ValueError(f"NIT '{nit_str}' lacks numerical characters needed for live validation.")
 
-    # Playwright Scraping Section
-    async with async_playwright() as p:
-        browser = None
+async def human_delay(min_ms=500, max_ms=1800):
+
+    await asyncio.sleep(
+        random.uniform(min_ms / 1000, max_ms / 1000)
+    )
+
+
+async def human_mouse_movements(page):
+
+    for _ in range(random.randint(3, 6)):
+
+        await page.mouse.move(
+            random.randint(100, 1200),
+            random.randint(100, 700),
+            steps=random.randint(5, 25)
+        )
+
+        await human_delay(100, 500)
+
+
+async def wait_for_turnstile(page, cleaned_nit: str):
+
+    logger.info(
+        f"[NIT: {cleaned_nit}] Esperando Turnstile..."
+    )
+
+    try:
+
+        await page.wait_for_function(
+            """
+            () => {
+
+                const el = document.querySelector(
+                    '[name="cf-turnstile-response"]'
+                );
+
+                return (
+                    el &&
+                    el.value &&
+                    el.value.length > 20
+                );
+            }
+            """,
+            timeout=45000
+        )
+
+        token = await page.locator(
+            '[name="cf-turnstile-response"]'
+        ).input_value()
+
+        logger.info(
+            f"[NIT: {cleaned_nit}] "
+            f"Turnstile token OK"
+        )
+
+        return token
+
+    except Exception:
+
+        logger.error(
+            f"[NIT: {cleaned_nit}] "
+            f"Cloudflare no generó token"
+        )
+
         try:
-            logger.info(f"[NIT: {cleaned_nit}] Initializing Playwright browser launch...")
-            try:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-web-security"
-                    ]
-                )
-            except Exception as launch_err:
-                tb_str = traceback.format_exc()
-                logger.error(f"[NIT: {cleaned_nit}] browser launch error:\n{tb_str}")
-                raise RuntimeError(f"Playwright browser launch failure: {str(launch_err)}") from launch_err
-            
-            # 2. Emulate realistic browser headers & sizing
+
+            await page.screenshot(
+                path=f"turnstile_fail_{cleaned_nit}.png",
+                full_page=True
+            )
+
+            html = await page.content()
+
+            with open(
+                f"turnstile_fail_{cleaned_nit}.html",
+                "w",
+                encoding="utf-8"
+            ) as f:
+                f.write(html)
+
+        except Exception:
+            pass
+
+        raise RuntimeError(
+            "Cloudflare bloqueó la sesión. "
+            "No se generó token Turnstile."
+        )
+
+
+async def scrape_dian_rut(nit_str: str) -> dict:
+
+    cleaned_nit = "".join(filter(str.isdigit, nit_str))
+
+    expected_dv = calculate_dian_dv(cleaned_nit)
+
+    if not cleaned_nit:
+
+        raise ValueError(
+            f"NIT '{nit_str}' no contiene dígitos válidos."
+        )
+
+    async with async_playwright() as p:
+
+        browser = None
+
+        try:
+
+            logger.info(
+                f"[NIT: {cleaned_nit}] "
+                "Iniciando navegador Chromium..."
+            )
+
+            browser = await p.chromium.launch(
+                headless=True,
+                slow_mo=50,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-web-security",
+                ]
+            )
+
             context = await browser.new_context(
                 user_agent=random.choice(USER_AGENTS),
-                viewport={"width": 1280, "height": 720},
+                viewport={
+                    "width": 1366,
+                    "height": 768
+                },
                 locale="es-CO",
-                timezone_id="America/Bogota"
+                timezone_id="America/Bogota",
+                java_script_enabled=True,
+                extra_http_headers={
+                    "Accept-Language": "es-CO,es;q=0.9",
+                    "Accept": (
+                        "text/html,application/xhtml+xml,"
+                        "application/xml;q=0.9,*/*;q=0.8"
+                    ),
+                    "Upgrade-Insecure-Requests": "1",
+                    "Referer": "https://muisca.dian.gov.co/",
+                }
             )
-            
-            page = await context.new_page()
-            
-            # 3. Direct Navigation to public web form
-            dian_url = "https://muisca.dian.gov.co/WebConsultaRUT/ConsultaRut.faces"
-            logger.info(f"[NIT: {cleaned_nit}] Navigating to DIAN portal: {dian_url}")
-            try:
-                await page.goto(dian_url, timeout=5000, wait_until="domcontentloaded")
-            except PlaywrightTimeoutError as goto_timeout:
-                tb_str = traceback.format_exc()
-                logger.error(f"[NIT: {cleaned_nit}] page.goto() failure (timeout):\n{tb_str}")
-                raise RuntimeError(f"Navigation failure: DIAN did not load within 5000ms.") from goto_timeout
-            except PlaywrightError as goto_err:
-                tb_str = traceback.format_exc()
-                logger.error(f"[NIT: {cleaned_nit}] page.goto() failure (navigation error):\n{tb_str}")
-                raise RuntimeError(f"Navigation error: DIAN portal loading failed. {str(goto_err)}") from goto_err
-            
-            # Fill form
-            input_selector = "input[name='formConsultaRut:numNit']" if await page.query_selector("input[name='formConsultaRut:numNit']") else "#formConsultaRut\\:numNit"
-            logger.info(f"[NIT: {cleaned_nit}] Testing query selector for NIT input...")
-            try:
-                await page.wait_for_selector(input_selector, timeout=2000)
-            except PlaywrightTimeoutError as sel_timeout:
-                tb_str = traceback.format_exc()
-                logger.error(f"[NIT: {cleaned_nit}] selector timeout error (input field not found):\n{tb_str}")
-                raise RuntimeError(f"DOM modification or block: Selector '{input_selector}' could not be located in 2000ms.") from sel_timeout
-            
-            await page.click(input_selector)
-            await page.fill(input_selector, "")
-            
-            # Simulate human-like keystrokes
-            for char in cleaned_nit:
-                await page.keyboard.press(char)
-                await asyncio.sleep(random.uniform(0.04, 0.1))
-                
-            # Submit Form click
-            btn_selector = "input[name='formConsultaRut:btnBuscar']" if await page.query_selector("input[name='formConsultaRut:btnBuscar']") else "#formConsultaRut\\:btnBuscar"
-            logger.info(f"[NIT: {cleaned_nit}] Submitting query form using: {btn_selector}")
-            await page.click(btn_selector)
-            
-            # Wait for Results Panel
-            logger.info(f"[NIT: {cleaned_nit}] Awaiting portal state response (networkidle)...")
-            try:
-                await page.wait_for_load_state("networkidle", timeout=3000)
-            except Exception as wait_err:
-                logger.info(f"[NIT: {cleaned_nit}] Page load networkidle finished early or raised non-critical alarm: {str(wait_err)}")
-                
-            await asyncio.sleep(1.0) # buffer to render tables
-            
-            # Attempt extraction of the DIAN results fields
-            # Names of elements in the DOM of public RUT portal
-            company_el = await page.query_selector("[id*='primerApellido'], [id*='razonSocial']")
-            company_name = await company_el.inner_text() if company_el else None
-            
-            status_el = await page.query_selector("[id*='estado']")
-            status_val = await status_el.inner_text() if status_el else None
-            
-            activity_el = await page.query_selector("[id*='actividad']")
-            activity_name = await activity_el.inner_text() if activity_el else None
-            
-            if not company_name and not status_val:
-                logger.error(f"[NIT: {cleaned_nit}] Playwright validation failed: Data selectors returned null. Main page might have block or captcha.")
-                raise RuntimeError("Response parsing error: DIAN portal responded with empty fields or captcha wall.")
 
-            await browser.close()
-            
-            logger.info(f"[NIT: {cleaned_nit}] Query complete. Company: {company_name}, Status: {status_val}")
-            
+            page = await context.new_page()
+
+            dian_url = (
+                "https://muisca.dian.gov.co/"
+                "WebRutMuisca/DefConsultaEstadoRUT.faces"
+            )
+
+            logger.info(
+                f"[NIT: {cleaned_nit}] "
+                f"Navegando a: {dian_url}"
+            )
+
+            try:
+
+                await page.goto(
+                    dian_url,
+                    timeout=60000,
+                    wait_until="networkidle"
+                )
+
+            except PlaywrightTimeoutError:
+
+                raise RuntimeError(
+                    "Timeout cargando portal DIAN."
+                )
+
+            except PlaywrightError as e:
+
+                raise RuntimeError(
+                    f"Error navegando a DIAN: {str(e)}"
+                )
+
+            await human_delay(2000, 4000)
+
+            await human_mouse_movements(page)
+
+            input_selector = (
+                "input[name='vistaConsultaEstadoRUT:"
+                "formConsultaEstadoRUT:numNit']"
+            )
+
+            btn_selector = (
+                "input[name='vistaConsultaEstadoRUT:"
+                "formConsultaEstadoRUT:btnBuscar']"
+            )
+
+            logger.info(
+                f"[NIT: {cleaned_nit}] "
+                "Esperando campo NIT..."
+            )
+
+            try:
+
+                await page.wait_for_selector(
+                    input_selector,
+                    timeout=15000
+                )
+
+            except PlaywrightTimeoutError:
+
+                await page.screenshot(
+                    path=f"input_not_found_{cleaned_nit}.png",
+                    full_page=True
+                )
+
+                raise RuntimeError(
+                    "Campo NIT no encontrado."
+                )
+
+            # interacción humana
+            await page.mouse.move(300, 400)
+
+            await human_delay(500, 1200)
+
+            await page.click(input_selector)
+
+            await human_delay(500, 1500)
+
+            await page.type(
+                input_selector,
+                cleaned_nit,
+                delay=random.randint(100, 180)
+            )
+
+            await human_delay(1000, 2500)
+
+            # esperar token real
+            await wait_for_turnstile(
+                page,
+                cleaned_nit
+            )
+
+            logger.info(
+                f"[NIT: {cleaned_nit}] "
+                "Enviando formulario..."
+            )
+
+            await human_delay(1200, 2500)
+
+            await page.click(btn_selector)
+
+            try:
+
+                await page.wait_for_load_state(
+                    "networkidle",
+                    timeout=30000
+                )
+
+            except Exception:
+                pass
+
+            await human_delay(3000, 6000)
+
+            result_html = await page.content()
+
+            try:
+
+                with open(
+                    f"resultado_{cleaned_nit}.html",
+                    "w",
+                    encoding="utf-8"
+                ) as f:
+                    f.write(result_html)
+
+                await page.screenshot(
+                    path=f"resultado_{cleaned_nit}.png",
+                    full_page=True
+                )
+
+            except Exception:
+                pass
+
+            logger.info(
+                f"[NIT: {cleaned_nit}] "
+                "HTML obtenido correctamente"
+            )
+
+            # extracción
+            company_el = (
+                await page.query_selector("[id*='razonSocial']")
+                or await page.query_selector("[id*='primerApellido']")
+            )
+
+            company_name = (
+                (await company_el.inner_text()).strip()
+                if company_el else None
+            )
+
+            status_el = await page.query_selector("[id*='estado']")
+
+            status_val = (
+                (await status_el.inner_text()).strip().upper()
+                if status_el else None
+            )
+
+            activity_code_el = await page.query_selector(
+                "[id*='actividadEconomica']"
+            )
+
+            activity_code = (
+                (await activity_code_el.inner_text()).strip()
+                if activity_code_el else "N/A"
+            )
+
+            activity_name_el = await page.query_selector(
+                "[id*='nombreActividad']"
+            )
+
+            activity_name = (
+                (await activity_name_el.inner_text()).strip()
+                if activity_name_el else "N/A"
+            )
+
+            address_el = (
+                await page.query_selector("[id*='direccionSeccional']")
+                or await page.query_selector("[id*='direccion']")
+            )
+
+            address = (
+                (await address_el.inner_text()).strip()
+                if address_el else "N/A"
+            )
+
+            dpto_el = (
+                await page.query_selector("[id*='seccional']")
+                or await page.query_selector("[id*='dpto']")
+            )
+
+            dpto = (
+                (await dpto_el.inner_text()).strip()
+                if dpto_el else "N/A"
+            )
+
+            if not company_name and not status_val:
+
+                raise RuntimeError(
+                    "La DIAN respondió sin datos válidos. "
+                    "Cloudflare probablemente detectó automatización."
+                )
+
+            logger.info(
+                f"[NIT: {cleaned_nit}] "
+                f"Resultado: {company_name} | "
+                f"Estado: {status_val}"
+            )
+
             return {
                 "nit": cleaned_nit,
                 "dv": expected_dv,
-                "company_name": company_name.strip().upper(),
-                "status": status_val.strip().upper() if status_val else "ACTIVO",
-                "economic_activity": "G4690",
-                "activity_name": activity_name.strip().capitalize() if activity_name else "Comercio al por mayor",
-                "address": "Calle Secundaria Colombia",
-                "dpto": "Bogotá D.C.",
+                "company_name": (
+                    company_name.upper()
+                    if company_name
+                    else f"NIT {cleaned_nit}"
+                ),
+                "status": (
+                    status_val
+                    if status_val
+                    else "ACTIVO"
+                ),
+                "economic_activity": activity_code,
+                "activity_name": activity_name,
+                "address": address,
+                "dpto": dpto,
                 "check_code": "DIAN_MUISCA_LIVE",
-                "notes": "Validación exitosa en vivo desde el portal de la DIAN Muisca."
+                "notes": (
+                    "Validación exitosa "
+                    "desde portal DIAN."
+                )
             }
 
-        except PlaywrightError as p_err:
-            tb_str = traceback.format_exc()
-            logger.error(f"[NIT: {cleaned_nit}] Playwright exception occurred:\n{tb_str}")
-            raise RuntimeError(f"Playwright runtime exception: {str(p_err)}") from p_err
-        except Exception as any_err:
-            tb_str = traceback.format_exc()
-            logger.error(f"[NIT: {cleaned_nit}] general exception occurred:\n{tb_str}")
-            raise any_err
+        except (RuntimeError, ValueError):
+            raise
+
+        except PlaywrightError as e:
+
+            tb = traceback.format_exc()
+
+            logger.error(
+                f"[NIT: {cleaned_nit}] "
+                f"PlaywrightError:\n{tb}"
+            )
+
+            raise RuntimeError(
+                f"Error de Playwright: {str(e)}"
+            )
+
+        except Exception:
+
+            tb = traceback.format_exc()
+
+            logger.error(
+                f"[NIT: {cleaned_nit}] "
+                f"Error inesperado:\n{tb}"
+            )
+
+            raise
+
         finally:
+
             if browser:
+
                 try:
                     await browser.close()
                 except Exception:
