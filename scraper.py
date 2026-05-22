@@ -69,7 +69,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             page = await context.new_page()
 
             # --- FIX 1: Timeout aumentado a 30s (el portal DIAN es muy lento) ---
-            dian_url = "https://muisca.dian.gov.co/WebConsultaRUT/ConsultaRut.faces"
+            dian_url = "dian_url = "https://muisca.dian.gov.co/WebRutMuisca/DefConsultaEstadoRUT.faces""
             logger.info(f"[NIT: {cleaned_nit}] Navegando a: {dian_url}")
             try:
                 await page.goto(dian_url, timeout=30000, wait_until="domcontentloaded")
@@ -86,7 +86,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
                       
             # --- FIX 2: wait_for_selector PRIMERO, luego usar el selector confirmado ---
-            input_selector = "input[name='formConsultaRut:numNit']"
+            input_selector = "input[name='NIT']"
             logger.info(f"[NIT: {cleaned_nit}] Esperando campo de entrada NIT...")
             try:
                 await page.wait_for_selector(input_selector, timeout=10000)
@@ -104,7 +104,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             await page.type(input_selector, cleaned_nit, delay=random.randint(60, 120))
 
             # Localizar y hacer clic en el botón Buscar
-            btn_selector = "input[name='formConsultaRut:btnBuscar']"
+            btn_selector = "input[type='submit']"
             try:
                 await page.wait_for_selector(btn_selector, timeout=5000)
             except PlaywrightTimeoutError:
