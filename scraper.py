@@ -53,12 +53,12 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                 user_agent=random.choice(USER_AGENTS),
                 viewport={"width": 1280, "height": 720},
                 locale="es-CO",
-                timezone_id="America/Bogota"
-                 extra_http_headers={
-        "Accept-Language": "es-CO,es;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Referer": "http://muisca.dian.gov.co/",
-    }
+                timezone_id="America/Bogota",
+                extra_http_headers={
+                    "Accept-Language": "es-CO,es;q=0.9",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Referer": "http://muisca.dian.gov.co/",
+                }
             )
 
             page = await context.new_page()
@@ -74,7 +74,8 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             page_content = await page.content()
             logger.info(f"[NIT: {cleaned_nit}] PAGE TITLE: {await page.title()}")
-            logger.info(f"[NIT: {cleaned_nit}] HTML SNIPPET: {page_content[:800]}")
+            logger.info(f"[NIT: {cleaned_nit}] PAGE URL: {page.url}")
+            logger.info(f"[NIT: {cleaned_nit}] HTML SNIPPET: {page_content[:600]}")
 
             input_selector = "input[name='NIT']"
             logger.info(f"[NIT: {cleaned_nit}] Esperando campo NIT...")
@@ -91,17 +92,23 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             await page.type(input_selector, cleaned_nit, delay=random.randint(60, 120))
 
             btn_selector = None
-            for sel in ["input[type='submit']", "button[type='submit']", "input[type='button']", "button", "input[value='Buscar']", "input[value='Consultar']"]:
+            for sel in [
+                "input[type='submit']",
+                "button[type='submit']",
+                "input[type='button']",
+                "input[value='Buscar']",
+                "input[value='Consultar']",
+                "button",
+            ]:
                 el = await page.query_selector(sel)
                 if el:
                     btn_selector = sel
-                    logger.info(f"[NIT: {cleaned_nit}] Boton encontrado con selector: {sel}")
+                    logger.info(f"[NIT: {cleaned_nit}] Boton encontrado: {sel}")
                     break
+
             if not btn_selector:
                 raise RuntimeError("Boton de busqueda no encontrado en el portal.")
-            await page.click(btn_selector)
 
-            logger.info(f"[NIT: {cleaned_nit}] Enviando formulario...")
             await page.click(btn_selector)
 
             try:
@@ -112,15 +119,15 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             await asyncio.sleep(2.0)
 
             result_html = await page.content()
-            logger.info(f"[NIT: {cleaned_nit}] RESULT HTML: {result_html[:1000]}")
+            logger.info(f"[NIT: {cleaned_nit}] RESULT HTML: {result_html[:1200]}")
 
-            company_el = await page.query_selector("[id*='razonSocial']") or \
-                         await page.query_selector("[id*='primerApellido']") or \
-                         await page.query_selector("td:has-text('Razon Social')") 
+            company_el = (
+                await page.query_selector("[id*='razonSocial']") or
+                await page.query_selector("[id*='primerApellido']")
+            )
             company_name = (await company_el.inner_text()).strip() if company_el else None
 
-            status_el = await page.query_selector("[id*='estado']") or \
-                        await page.query_selector("td:has-text('ACTIVO')")
+            status_el = await page.query_selector("[id*='estado']")
             status_val = (await status_el.inner_text()).strip().upper() if status_el else None
 
             activity_code_el = await page.query_selector("[id*='actividadEconomica']")
@@ -129,12 +136,16 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             activity_name_el = await page.query_selector("[id*='nombreActividad']")
             activity_name = (await activity_name_el.inner_text()).strip().capitalize() if activity_name_el else "N/A"
 
-            address_el = await page.query_selector("[id*='direccionSeccional']") or \
-                         await page.query_selector("[id*='direccion']")
+            address_el = (
+                await page.query_selector("[id*='direccionSeccional']") or
+                await page.query_selector("[id*='direccion']")
+            )
             address = (await address_el.inner_text()).strip() if address_el else "N/A"
 
-            dpto_el = await page.query_selector("[id*='seccional']") or \
-                      await page.query_selector("[id*='dpto']")
+            dpto_el = (
+                await page.query_selector("[id*='seccional']") or
+                await page.query_selector("[id*='dpto']")
+            )
             dpto = (await dpto_el.inner_text()).strip() if dpto_el else "N/A"
 
             if not company_name and not status_val:
