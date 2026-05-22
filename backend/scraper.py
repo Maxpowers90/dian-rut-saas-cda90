@@ -3,6 +3,12 @@ import random
 import logging
 import traceback
 
+from playwright.async_api import (
+    async_playwright,
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
+
 logger = logging.getLogger("dian_scraper")
 
 USER_AGENTS = [
