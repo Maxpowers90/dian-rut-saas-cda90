@@ -72,53 +72,31 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             except PlaywrightError as e:
                 raise RuntimeError(f"Error de navegacion al portal DIAN: {str(e)}")
 
-            page_title = await page.title()
-            logger.info(f"[NIT: {cleaned_nit}] PAGE TITLE: {page_title}")
-            logger.info(f"[NIT: {cleaned_nit}] PAGE URL: {page.url}")
+            # Selectores reales confirmados del portal JSF de la DIAN
+            input_selector = "input[name='vistaConsultaEstadoRUT:formConsultaEstadoRUT:numNit']"
+            btn_selector = "input[name='vistaConsultaEstadoRUT:formConsultaEstadoRUT:btnBuscar']"
 
-            body_el = await page.query_selector("body")
-            body_text = await body_el.inner_html() if body_el else "NO BODY"
-            logger.info(f"[NIT: {cleaned_nit}] BODY HTML: {body_text[:4000]}")
-
-            inputs = await page.query_selector_all("input")
-            for inp in inputs:
-                name = await inp.get_attribute("name")
-                tipo = await inp.get_attribute("type")
-                value = await inp.get_attribute("value")
-                logger.info(f"[NIT: {cleaned_nit}] INPUT: name={name} type={tipo} value={value}")
-
-            input_selector = "input[name='NIT']"
             logger.info(f"[NIT: {cleaned_nit}] Esperando campo NIT...")
             try:
                 await page.wait_for_selector(input_selector, timeout=10000)
             except PlaywrightTimeoutError:
-                input_selector = "input[type='text']"
-                try:
-                    await page.wait_for_selector(input_selector, timeout=5000)
-                except PlaywrightTimeoutError:
-                    raise RuntimeError("Campo NIT no encontrado. El portal puede haber cambiado o mostrar captcha.")
+                raise RuntimeError("Campo NIT no encontrado en el portal.")
 
             await page.fill(input_selector, "")
             await page.type(input_selector, cleaned_nit, delay=random.randint(60, 120))
 
-            btn_selector = None
-            for sel in [
-                "input[type='submit']",
-                "button[type='submit']",
-                "input[type='button']",
-                "input[value='Buscar']",
-                "input[value='Consultar']",
-                "button",
-            ]:
-                el = await page.query_selector(sel)
-                if el:
-                    btn_selector = sel
-                    logger.info(f"[NIT: {cleaned_nit}] Boton encontrado: {sel}")
-                    break
+            logger.info(f"[NIT: {cleaned_nit}] Verificando captcha Cloudflare Turnstile...")
+            # Esperar a que Turnstile complete su validacion automatica
+            await asyncio.sleep(3.0)
 
-            if not btn_selector:
-                raise RuntimeError("Boton de busqueda no encontrado en el portal.")
+            # Verificar si el token de Turnstile fue llenado
+            turnstile_val = await page.eval_on_selector(
+                "input[name='cf-turnstile-response']",
+                "el => el.value"
+            ) if await page.query_selector("input[name='cf-turnstile-response']") else ""
+            logger.info(f"[NIT: {cleaned_nit}] Turnstile token presente: {bool(turnstile_val)}")
 
+            logger.info(f"[NIT: {cleaned_nit}] Enviando formulario...")
             await page.click(btn_selector)
 
             try:
@@ -159,7 +137,11 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             dpto = (await dpto_el.inner_text()).strip() if dpto_el else "N/A"
 
             if not company_name and not status_val:
-                raise RuntimeError("El portal respondio con campos vacios. NIT no existe, captcha activo, o portal bloqueo la consulta.")
+                raise RuntimeError(
+                    "El portal respondio con campos vacios. "
+                    "Causa probable: Cloudflare Turnstile bloqueo la consulta desde IP de datacenter. "
+                    "Turnstile token presente: " + str(bool(turnstile_val))
+                )
 
             logger.info(f"[NIT: {cleaned_nit}] Resultado: {company_name} | Estado: {status_val}")
 
