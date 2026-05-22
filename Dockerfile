@@ -58,4 +58,5 @@ COPY . .
 EXPOSE 8000
 
 # Comando de inicio
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
