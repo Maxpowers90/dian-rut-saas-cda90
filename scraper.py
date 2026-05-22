@@ -33,18 +33,24 @@ USER_AGENTS = [
 
 
 def calculate_dian_dv(nit_str: str) -> str:
+
     cleaned_nit = "".join(filter(str.isdigit, nit_str))
 
     if not cleaned_nit:
         return "0"
 
-    coefficients = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71]
+    coefficients = [
+        3, 7, 13, 17, 19,
+        23, 29, 37, 41, 43,
+        47, 53, 59, 67, 71
+    ]
 
     digits = [int(c) for c in cleaned_nit][::-1]
 
     total_sum = 0
 
     for idx, digit in enumerate(digits):
+
         if idx < len(coefficients):
             total_sum += digit * coefficients[idx]
 
@@ -56,7 +62,10 @@ def calculate_dian_dv(nit_str: str) -> str:
 
 
 async def human_delay(min_ms=500, max_ms=1800):
-    await asyncio.sleep(random.uniform(min_ms / 1000, max_ms / 1000))
+
+    await asyncio.sleep(
+        random.uniform(min_ms / 1000, max_ms / 1000)
+    )
 
 
 async def human_mouse_movements(page):
@@ -74,7 +83,9 @@ async def human_mouse_movements(page):
 
 async def wait_for_turnstile(page, cleaned_nit: str):
 
-    logger.info(f"[NIT: {cleaned_nit}] Esperando Turnstile...")
+    logger.info(
+        f"[NIT: {cleaned_nit}] Esperando Turnstile..."
+    )
 
     try:
 
@@ -101,8 +112,8 @@ async def wait_for_turnstile(page, cleaned_nit: str):
         ).input_value()
 
         logger.info(
-            f"[NIT: {cleaned_nit}] Turnstile token OK: "
-            f"{token[:20]}..."
+            f"[NIT: {cleaned_nit}] "
+            f"Turnstile token OK"
         )
 
         return token
@@ -111,7 +122,7 @@ async def wait_for_turnstile(page, cleaned_nit: str):
 
         logger.error(
             f"[NIT: {cleaned_nit}] "
-            "Cloudflare no generó token Turnstile"
+            f"Cloudflare no generó token"
         )
 
         await page.screenshot(
@@ -141,6 +152,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
     expected_dv = calculate_dian_dv(cleaned_nit)
 
     if not cleaned_nit:
+
         raise ValueError(
             f"NIT '{nit_str}' no contiene dígitos válidos."
         )
@@ -153,11 +165,11 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             logger.info(
                 f"[NIT: {cleaned_nit}] "
-                "Iniciando Chromium..."
+                "Iniciando navegador Chromium..."
             )
 
             browser = await p.chromium.launch(
-                headless=False,
+                headless=True,
                 slow_mo=50,
                 args=[
                     "--no-sandbox",
@@ -191,7 +203,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             page = await context.new_page()
 
-            # stealth mode
+            # ACTIVAR STEALTH
             await stealth_async(page)
 
             dian_url = (
@@ -201,7 +213,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             logger.info(
                 f"[NIT: {cleaned_nit}] "
-                f"Navegando a {dian_url}"
+                f"Navegando a: {dian_url}"
             )
 
             try:
@@ -213,13 +225,15 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                 )
 
             except PlaywrightTimeoutError:
+
                 raise RuntimeError(
-                    "Timeout cargando portal DIAN (>60s)"
+                    "Timeout cargando portal DIAN."
                 )
 
             except PlaywrightError as e:
+
                 raise RuntimeError(
-                    f"Error navegando al portal DIAN: {str(e)}"
+                    f"Error navegando a DIAN: {str(e)}"
                 )
 
             await human_delay(2000, 4000)
@@ -259,6 +273,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                     "Campo NIT no encontrado."
                 )
 
+            # interacción humana
             await page.mouse.move(300, 400)
 
             await human_delay(500, 1200)
@@ -275,7 +290,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             await human_delay(1000, 2500)
 
-            # esperar turnstile real
+            # esperar token real
             turnstile_token = await wait_for_turnstile(
                 page,
                 cleaned_nit
@@ -291,10 +306,12 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             await page.click(btn_selector)
 
             try:
+
                 await page.wait_for_load_state(
                     "networkidle",
                     timeout=30000
                 )
+
             except Exception:
                 pass
 
@@ -316,10 +333,10 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             logger.info(
                 f"[NIT: {cleaned_nit}] "
-                "HTML recibido correctamente"
+                "HTML obtenido correctamente"
             )
 
-            # extracción de datos
+            # extracción
             company_el = (
                 await page.query_selector("[id*='razonSocial']")
                 or await page.query_selector("[id*='primerApellido']")
@@ -442,6 +459,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
         finally:
 
             if browser:
+
                 try:
                     await browser.close()
                 except Exception:
