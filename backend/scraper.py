@@ -3,6 +3,11 @@ import random
 import logging
 import traceback
 
+from playwright.async_api import (
+    async_playwright,
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 logger = logging.getLogger("dian_scraper")
 
@@ -267,6 +272,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                     "Campo NIT no encontrado."
                 )
 
+            # interacción humana
             await page.mouse.move(300, 400)
 
             await human_delay(500, 1200)
@@ -283,6 +289,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             await human_delay(1000, 2500)
 
+            # esperar token Turnstile
             await wait_for_turnstile(
                 page,
                 cleaned_nit
@@ -333,6 +340,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                 "HTML obtenido correctamente"
             )
 
+            # extracción
             company_el = (
                 await page.query_selector("[id*='razonSocial']")
                 or await page.query_selector("[id*='primerApellido']")
@@ -420,8 +428,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                 "dpto": dpto,
                 "check_code": "DIAN_MUISCA_LIVE",
                 "notes": (
-                    "Validación exitosa "
-                    "desde portal DIAN."
+                    "Validación exitosa desde portal DIAN."
                 )
             }
 
