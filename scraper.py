@@ -54,11 +54,16 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                 viewport={"width": 1280, "height": 720},
                 locale="es-CO",
                 timezone_id="America/Bogota"
+                 extra_http_headers={
+        "Accept-Language": "es-CO,es;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": "http://muisca.dian.gov.co/",
+    }
             )
 
             page = await context.new_page()
 
-            dian_url = "https://muisca.dian.gov.co/WebRutMuisca/DefConsultaEstadoRUT.faces"
+            dian_url = "http://muisca.dian.gov.co/WebRutMuisca/DefConsultaEstadoRUT.faces"
             logger.info(f"[NIT: {cleaned_nit}] Navegando a: {dian_url}")
             try:
                 await page.goto(dian_url, timeout=30000, wait_until="domcontentloaded")
