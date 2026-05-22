@@ -212,6 +212,10 @@ def get_batch_progress(job_id: str):
         raise
     except Exception as err:
         raise HTTPException(status_code=500, detail=str(err))
+        if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 # Importación necesaria para el delay entre NITs
