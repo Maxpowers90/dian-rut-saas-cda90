@@ -217,11 +217,16 @@ async def scrape_dian_rut(nit_str: str) -> dict:
 
             try:
 
+                # CAMBIO IMPORTANTE:
+                # usar domcontentloaded en vez de networkidle
                 await page.goto(
                     dian_url,
                     timeout=60000,
-                    wait_until="networkidle"
+                    wait_until="domcontentloaded"
                 )
+
+                # esperar manualmente
+                await page.wait_for_timeout(5000)
 
             except PlaywrightTimeoutError:
 
@@ -307,7 +312,7 @@ async def scrape_dian_rut(nit_str: str) -> dict:
             try:
 
                 await page.wait_for_load_state(
-                    "networkidle",
+                    "domcontentloaded",
                     timeout=30000
                 )
 
@@ -340,7 +345,6 @@ async def scrape_dian_rut(nit_str: str) -> dict:
                 "HTML obtenido correctamente"
             )
 
-            # extracción
             company_el = (
                 await page.query_selector("[id*='razonSocial']")
                 or await page.query_selector("[id*='primerApellido']")
