@@ -19,4 +19,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["python", "main.py"]
+CMD ["sh", "-c", "python main.py 2>&1"] 
